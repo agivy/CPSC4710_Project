@@ -1,0 +1,245 @@
+The previous Hugging Face dataset for CelebA-HQ indeed lacked the caption text. The Kaggle dataset **`kashyapkvh/mm-celeba-hq-dataset`** contains a `text` folder with `.txt` files corresponding to each image, which we will use.
+
+Here is the Python file that constructs the new dataset. It handles:
+
+1.  **MS-COCO**: Downloads via Hugging Face, slices 30k labeled images, and extracts one caption per image.
+2.  **CelebA-HQ**: Loads from the Kaggle dataset structure (matching `.jpg` in `image/` with `.txt` in `text/`), creates a train/test split, and extracts captions.
+3.  **Adversarial Patching**: Applies random black and white patches to all training images.
+
+### Instructions
+
+1.  **Download the Kaggle Dataset**:
+    You must download the dataset from Kaggle first, as it requires authentication.
+      * Download link: [MM-CelebA-HQ Dataset](https://www.kaggle.com/datasets/kashyapkvh/mm-celeba-hq-dataset)
+      * Unzip it. You should see a folder (likely named `multi-modal-celeba-hq-dataset` or similar) containing `image` and `text` subfolders.
+2.  **Install Dependencies**:
+    ```bash
+    pip install datasets pandas pillow pycocotools
+    ```
+3.  **Run the Script**:
+    Update the `KAGGLE_DATASET_PATH` variable in the script below to point to your unzipped folder.
+
+### Python Script (`build_adversarial_dataset.py`)
+
+```python
+import os
+import glob
+import random
+import logging
+from PIL import Image, ImageDraw
+from datasets import load_dataset, Dataset, concatenate_datasets, Features, Value, Image as ImageFeature
+
+# -----------------------------------------------------------------------------
+# CONFIGURATION
+# -----------------------------------------------------------------------------
+# Path to the unzipped Kaggle dataset folder containing 'image' and 'text' subfolders
+KAGGLE_DATASET_PATH = "./multi-modal-celeba"  # <--- CHANGE THIS to your actual path
+
+# Patch configuration
+NUM_PATCHES = 2
+PATCH_MIN_SIZE = 40
+PATCH_MAX_SIZE = 100
+
+# -----------------------------------------------------------------------------
+# SETUP LOGGING
+# -----------------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def add_adversarial_patches(image):
+    """
+    Applies random black and white patches to the image.
+    This simulates the adversarial attack described.
+    """
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    
+    img_draw = image.copy()
+    draw = ImageDraw.Draw(img_draw)
+    w, h = image.size
+
+    for _ in range(NUM_PATCHES):
+        # Random dimensions
+        pw = random.randint(PATCH_MIN_SIZE, PATCH_MAX_SIZE)
+        ph = random.randint(PATCH_MIN_SIZE, PATCH_MAX_SIZE)
+        
+        # Random position
+        x = random.randint(0, max(0, w - pw))
+        y = random.randint(0, max(0, h - ph))
+        
+        # Randomly pick black or white
+        color = (0, 0, 0) if random.random() < 0.5 else (255, 255, 255)
+        
+        draw.rectangle([x, y, x + pw, y + ph], fill=color)
+    
+    return img_draw
+
+def load_mscoco_slice(num_samples=30000):
+    """
+    Loads MS-COCO from Hugging Face, slices 30k examples, 
+    and formats them to match our target schema.
+    """
+    logger.info("Downloading/Loading MS-COCO dataset...")
+    # 'year=2014' and 'coco_task=captions' standard for image captioning
+    try:
+        coco = load_dataset("shunk031/MSCOCO", year=2014, coco_task="captions", split="train", trust_remote_code=True)
+    except Exception as e:
+        logger.error("Failed to load MS-COCO. Ensure 'pycocotools' is installed.")
+        raise e
+
+    logger.info(f"Slicing {num_samples} images from MS-COCO...")
+    # We shuffle first to ensure diversity, then take 30k
+    coco_slice = coco.shuffle(seed=42).select(range(num_samples))
+
+    def process_coco_example(example):
+        # MS-COCO provides a list of captions under 'sentences' or 'captions'. 
+        # We pick one randomly to train the model to generate 'a' valid caption.
+        captions_list = example.get('sentences', example.get('captions', []))
+        
+        # Handle cases where captions might be a list of dicts or strings
+        if captions_list and isinstance(captions_list[0], dict):
+             # shunk031 sometimes returns [{'raw': '...', 'clean': '...'}]
+            caption_text = captions_list[0].get('raw', "")
+        elif captions_list and isinstance(captions_list[0], str):
+            caption_text = captions_list[0]
+        else:
+            caption_text = "An image."
+
+        # Apply adversarial patches
+        patched_img = add_adversarial_patches(example['image'])
+
+        return {
+            "image": patched_img,
+            "caption": caption_text,
+            "original_dataset": "MS-COCO"
+        }
+
+    logger.info("Processing MS-COCO images (applying patches)...")
+    processed_coco = coco_slice.map(process_coco_example, remove_columns=coco.column_names)
+    return processed_coco
+
+def load_celeba_kaggle(path):
+    """
+    Loads CelebA-HQ from the local Kaggle dataset structure.
+    Expected structure:
+      path/
+        image/ (contains .jpg)
+        text/  (contains .txt)
+    """
+    image_dir = os.path.join(path, "image")
+    text_dir = os.path.join(path, "text")
+
+    if not os.path.exists(image_dir) or not os.path.exists(text_dir):
+        raise FileNotFoundError(f"Could not find 'image' or 'text' folders in {path}. Please check the path.")
+
+    logger.info(f"Scanning files in {path}...")
+    image_files = sorted(glob.glob(os.path.join(image_dir, "*.jpg")))
+    
+    data_entries = []
+    
+    for img_path in image_files:
+        filename = os.path.basename(img_path)
+        base_name = os.path.splitext(filename)[0]
+        txt_path = os.path.join(text_dir, f"{base_name}.txt")
+
+        if os.path.exists(txt_path):
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                # The Kaggle dataset usually contains 10 lines of descriptions.
+                # We read all lines and pick the first one (or join them).
+                # For training stability, picking the first distinct sentence is usually best.
+                lines = [l.strip() for l in f.readlines() if l.strip()]
+                caption = lines[0] if lines else "A photo of a celebrity."
+            
+            data_entries.append({
+                "image": img_path, # Store path first, load lazily if needed, but HF Dataset handles images well
+                "caption": caption,
+                "original_dataset": "CelebA-HQ"
+            })
+    
+    logger.info(f"Found {len(data_entries)} matched CelebA-HQ pairs.")
+    
+    # Create a HF Dataset
+    # We use a generator to load images to avoid OOM during creation
+    def gen():
+        for entry in data_entries:
+            yield {
+                "image": Image.open(entry['image']).convert("RGB"),
+                "caption": entry['caption'],
+                "original_dataset": entry['original_dataset']
+            }
+
+    ds = Dataset.from_generator(gen)
+    return ds
+
+def main():
+    # 1. Load MS-COCO (Patched)
+    coco_dataset = load_mscoco_slice(num_samples=30000)
+    
+    # 2. Load CelebA-HQ (Raw)
+    celeba_dataset = load_celeba_kaggle(KAGGLE_DATASET_PATH)
+
+    # 3. Split CelebA-HQ into Train and Test
+    # The prompt requires the Test set to be ONLY CelebA-HQ (unseen images).
+    # We will split CelebA (30k total) -> e.g., 27k Train, 3k Test
+    logger.info("Splitting CelebA-HQ into Train (90%) and Test (10%)...")
+    celeba_split = celeba_dataset.train_test_split(test_size=0.1, seed=42)
+    celeba_train_raw = celeba_split['train']
+    celeba_test_raw = celeba_split['test']
+
+    # 4. Apply Patches to CelebA-HQ Train Set
+    logger.info("Applying patches to CelebA-HQ Train set...")
+    def process_celeba_train(example):
+        return {
+            "image": add_adversarial_patches(example["image"]),
+            "caption": example["caption"],
+            "original_dataset": "CelebA-HQ"
+        }
+    celeba_train = celeba_train_raw.map(process_celeba_train)
+
+    # 5. Process Test Set 
+    # (Usually, adversarial test sets ALSO have patches to test robustness, 
+    # but sometimes you want clean images for reference. 
+    # Given the prompt implies training for robustness, I will patch the test set too 
+    # so we can evaluate if the model recovers the caption despite the patch.)
+    logger.info("Applying patches to CelebA-HQ Test set (for evaluation)...")
+    celeba_test = celeba_test_raw.map(process_celeba_train)
+
+    # 6. Combine MS-COCO and CelebA-HQ for the Final Train Set
+    # Enforce features to match exactly
+    features = Features({
+        'image': ImageFeature(),
+        'caption': Value('string'),
+        'original_dataset': Value('string')
+    })
+    
+    coco_dataset = coco_dataset.cast(features)
+    celeba_train = celeba_train.cast(features)
+    celeba_test = celeba_test.cast(features)
+
+    logger.info("Merging datasets...")
+    final_train_set = concatenate_datasets([coco_dataset, celeba_train])
+    final_train_set = final_train_set.shuffle(seed=42)
+
+    # 7. Summary and Save
+    print("\n" + "="*50)
+    print("DATASET CREATION COMPLETE")
+    print("="*50)
+    print(f"Train Set Size: {len(final_train_set)} images")
+    print(f"  - MS-COCO: 30,000")
+    print(f"  - CelebA-HQ: {len(celeba_train)}")
+    print(f"Test Set Size:  {len(celeba_test)} images (CelebA-HQ only)")
+    print("="*50)
+
+    # Optional: Save to disk
+    # final_train_set.save_to_disk("adversarial_race_gender_train")
+    # celeba_test.save_to_disk("adversarial_race_gender_test")
+    # print("Saved to disk.")
+
+if __name__ == "__main__":
+    if not os.path.exists(KAGGLE_DATASET_PATH):
+        print(f"ERROR: Directory '{KAGGLE_DATASET_PATH}' not found.")
+        print("Please download the dataset from: https://www.kaggle.com/datasets/kashyapkvh/mm-celeba-hq-dataset")
+        print("Unzip it and update 'KAGGLE_DATASET_PATH' in the script.")
+    else:
+        main()
+```
