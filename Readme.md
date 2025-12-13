@@ -365,10 +365,6 @@ nano acmfo_training.py
 python acmfo_training.py
 ```
 
-**Expected Runtime**: 
-- Full dataset (20k samples): ~6-8 hours on V100
-- With GPU: ~2-3 hours per epoch
-
 **Outputs**:
 ```
 acmfo_coco_checkpoints/
@@ -418,8 +414,6 @@ nano baseline_vlm_training.py
 python baseline_vlm_training.py
 ```
 
-**Expected Runtime**: ~8-10 hours on V100
-
 **Outputs**:
 ```
 baseline_vlm/
@@ -463,7 +457,6 @@ nano train_blip.py
 python train_blip.py
 ```
 
-**Expected Runtime**: ~3-4 hours on V100 for 5 epochs
 
 **Outputs**:
 ```
@@ -736,7 +729,7 @@ pip install pycocotools gdown
 python -c "import nltk; nltk.download('punkt')"
 ```
 
-#### Phase 2: Dataset Preparation (1-3 hours depending on internet)
+#### Phase 2: Dataset Preparation
 
 ```bash
 # 1. Create dataset directories
