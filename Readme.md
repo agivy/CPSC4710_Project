@@ -7,9 +7,7 @@ This repository contains the implementation and evaluation code for training and
 - [Project Structure](#project-structure)
 - [Requirements](#requirements)
 - [Dataset Setup](#dataset-setup)
-- [Training Scripts](#training-scripts)
-- [Evaluation Scripts](#evaluation-scripts)
-- [Results and Analysis](#results-and-analysis)
+- [Usage Guide](#usage-guide)
 - [Reproducibility Guide](#reproducibility-guide)
 - [Troubleshooting](#troubleshooting)
 
@@ -35,65 +33,36 @@ This project implements several approaches to training and evaluating VLMs:
 
 ## Project Structure
 
-```
-├── README.md                                    # This file
-├── requirements.txt                             # Python dependencies
-│
-├── TRAINING SCRIPTS
-├── acmfo_training.py                           # ACMFO method on COCO dataset
-├── baseline_vlm_training.py                    # Baseline VLM fine-tuning
-├── train_blip.py                               # Standard BLIP training on FairFace
-│
-├── DATASET DOWNLOAD SCRIPTS
-├── download_coco.sh                            # MS-COCO 2017 dataset download
-├── download_fairface.sh                        # FairFace dataset download (bash)
-├── download_fairface.py                        # FairFace dataset download (Python)
-├── download_celeba.sh                          # CelebA dataset download
-│
-├── EVALUATION SCRIPTS
-├── evaluate_vlm.py                             # Comprehensive trustworthiness evaluation
-├── evaluate_train_blip.py                      # BLIP model evaluation
-├── causal_tracing.py                           # Causal tracing for interpretability
-│
-├── NOTEBOOKS
-├── vlm_train-2.ipynb                           # Main training notebook
-├── baseline_vlm_training.ipynb                 # Baseline training notebook
-├── coco_bias_analysis-3.ipynb                  # COCO bias analysis
-│
-├── RESULTS AND VISUALIZATIONS
-├── fairness_evaluation_results.csv             # Fairness metrics
-├── fairness_summary.txt                        # Summary of fairness evaluation
-├── fairness_summary.json                       # JSON format fairness summary
-├── final_evaluation_results.csv                # Complete evaluation results
-├── complete_evaluation_results.csv             # Detailed evaluation
-├── blip_evaluation_report.txt                  # BLIP evaluation report
-├── blip_coco_results.csv                       # BLIP results on COCO
-├── blip_coco_multi_reference_scores.csv        # Multi-reference BLEU scores
-├── blip2_captions.csv                          # Generated captions
-├── coco_bias_report.txt                        # COCO bias analysis report
-├── coco_bias_report.json                       # COCO bias analysis (JSON)
-│
-└── PLOTS AND VISUALIZATIONS
-    ├── fairness_evaluation_plots.png           # Fairness metric plots
-    ├── gender_distribution.png                 # Gender distribution analysis
-    ├── people_distribution.png                 # People count distribution
-    ├── activity_gender_bias.png                # Activity-gender bias (original)
-    ├── activity_gender_bias_corrected.png      # Activity-gender bias (corrected)
-    ├── object_gender_bias.png                  # Object-gender bias (original)
-    ├── object_gender_bias_corrected.png        # Object-gender bias (corrected)
-    ├── word_gender_bias_corrected.png          # Word-gender bias analysis
-    ├── caption_length_distribution.png         # Caption length statistics
-    ├── sample_images_captions.png              # Sample outputs
-    ├── flickr30k_gender_distribution.png       # Flickr30k gender analysis
-    ├── flickr30k_activity_bias.png             # Flickr30k activity bias
-    ├── flickr30k_context_bias.png              # Flickr30k context bias
-    ├── flickr30k_caption_quality.png           # Flickr30k caption quality
-    └── coco_comprehensive_bias_analysis.{png,pdf}  # Complete COCO bias analysis
-```
+### Training Scripts
+- **`acmfo_training.py`** - Main implementation of the Adaptive Cross-Modal Fairness Optimizer (ACMFO) framework for training BLIP on MS-COCO with fairness constraints, cross-modal disentanglement, and demographic parity regularization
+- **`baseline_vlm_training.py`** - Baseline VLM fine-tuning script that trains GIT model on FairFace dataset with demographic annotations (age, gender, race)
+- **`train_blip.py`** - Standard BLIP training pipeline on FairFace dataset, automatically downloads data from Hugging Face and trains with demographic-aware caption generation
+
+### Dataset Download Scripts
+- **`download_coco.sh`** - Bash script to download MS-COCO 2017 dataset (train images ~18GB, val images ~1GB, annotations ~241MB) and extract to specified directory
+- **`download_fairface.sh`** - Bash script to download FairFace dataset from Google Drive including training images (~4.3GB), validation images (~1.1GB), and CSV label files
+- **`download_fairface.py`** - Python alternative for downloading FairFace using Hugging Face datasets library (automatic caching)
+- **`download_celeba.sh`** - Bash script to download CelebA dataset using gdown for Google Drive files (aligned faces ~1.3GB, attributes, landmarks, bounding boxes)
+
+### Evaluation Scripts
+- **`evaluate_vlm.py`** - Comprehensive trustworthiness evaluation framework that measures fairness (DPD), interpretability (attention entropy, concentration), reliability (ECE), and performance (BLEU, ROUGE) on pretrained VLMs using MS-COCO validation set
+- **`evaluate_train_blip.py`** - Evaluation script specifically for fine-tuned BLIP models, computes BLEU/ROUGE scores, demographic-stratified performance, bias amplification metrics, and confusion matrices
+- **`causal_tracing.py`** - Implements causal intervention analysis to measure faithfulness of attention mechanisms by corrupting visual patches with noise, selectively restoring them, and computing correlation between attention weights and actual causal impact
+
+### Jupyter Notebooks
+- **`vlm_train-2.ipynb`** - Main interactive training notebook with end-to-end pipeline: dataset loading, ACMFO training, loss monitoring, and preliminary results visualization
+- **`baseline_vlm_training.ipynb`** - Interactive notebook for baseline VLM experiments on FairFace/CelebA-HQ with demographic fairness analysis and training curve visualization
+- **`coco_bias_analysis-3.ipynb`** - Comprehensive bias analysis notebook for MS-COCO dataset: gender distribution statistics, object-gender associations, activity bias patterns, word frequency analysis, and visualization generation
 
 ---
 
 ## Requirements
+
+### System Requirements
+- Python 3.8+
+- CUDA-capable GPU (recommended: 16GB+ VRAM for full training)
+- 50GB+ free disk space for datasets
+- Linux/Unix environment (for bash scripts)
 
 ### Python Dependencies
 
@@ -316,275 +285,97 @@ celeba/
 
 ---
 
-## Training Scripts
+## Usage Guide
 
-### 1. ACMFO Training (Main Method)
+### Training Workflows
 
-**File**: `acmfo_training.py`
+#### 1. ACMFO Training (Main Method)
 
-**Description**: Implements the Adaptive Cross-Modal Fairness Optimizer with multi-objective loss on MS-COCO.
+The ACMFO framework implements fairness-aware training with cross-modal disentanglement:
 
-**Key Features**:
-- Demographic parity via KL divergence regularization
-- Cross-modal disentanglement via mutual information minimization
-- CLIP-based gender inference (no demographic labels needed)
-- k-means clustering for caption space approximation
-
-**Configuration** (Lines 54-87):
-```python
-class ACMFOConfig:
-    # Paths - UPDATE THESE!
-    COCO_BASE_DIR = "/your/path/to/coco2017"
-    OUTPUT_DIR = "acmfo_coco_checkpoints"
-    
-    # Model
-    BASE_MODEL = "Salesforce/blip-image-captioning-base"
-    
-    # Training
-    BATCH_SIZE = 8
-    EPOCHS = 3
-    LEARNING_RATE = 5e-5
-    TRAIN_SAMPLES = 20000  # Subset for faster training
-    VAL_SAMPLES = 5000
-    
-    # ACMFO hyperparameters
-    LAMBDA_FAIRNESS = 1.0       # Fairness loss weight
-    LAMBDA_CROSS_MODAL = 0.05   # Cross-modal loss weight
-    
-    # Fairness parameters
-    NUM_CAPTION_CLUSTERS = 100
-    GENDER_CONFIDENCE_THRESHOLD = 0.3
-```
-
-**Usage**:
 ```bash
-# 1. Update COCO_BASE_DIR in line 58
+# Edit paths in the script
 nano acmfo_training.py
+# Line 58: COCO_BASE_DIR = "/your/path/to/coco2017"
+# Line 59: OUTPUT_DIR = "acmfo_coco_checkpoints"
 
-# 2. Run training
+# Run training
 python acmfo_training.py
 ```
 
-**Outputs**:
-```
-acmfo_coco_checkpoints/
-├── checkpoint_epoch_1/
-├── checkpoint_epoch_2/
-├── checkpoint_epoch_3/
-├── training_log.json
-├── fairness_metrics.json
-└── final_model/
-```
+**Key Configuration Parameters** (lines 54-87):
+- `BATCH_SIZE = 8` - Adjust based on GPU memory
+- `EPOCHS = 3` - Number of training epochs
+- `TRAIN_SAMPLES = 20000` - Use subset for faster training
+- `LAMBDA_FAIRNESS = 1.0` - Fairness loss weight
+- `LAMBDA_CROSS_MODAL = 0.05` - Cross-modal disentanglement weight
+- `NUM_CAPTION_CLUSTERS = 100` - k-means clusters for KL approximation
 
----
+**Outputs**: Checkpoints saved to `acmfo_coco_checkpoints/` with training logs and fairness metrics
 
-### 2. Baseline VLM Training
+#### 2. Baseline VLM Training
 
-**File**: `baseline_vlm_training.py`
+Train GIT model on FairFace dataset:
 
-**Description**: Fine-tunes GIT (microsoft/git-base) on FairFace with demographic annotations.
-
-**Configuration** (Lines 49-100):
-```python
-class Config:
-    # Model
-    model_name = "microsoft/git-base"  # 0.6B params
-    
-    # Data
-    fairface_dataset = "HuggingFaceM4/FairFace"
-    img_size = 224
-    max_caption_length = 50
-    
-    # Training
-    batch_size = 16
-    num_epochs = 4
-    learning_rate = 5e-5
-    
-    # Paths - UPDATE THESE!
-    base_dir = "/your/path/to/project"
-    output_dir = f"{base_dir}/baseline_vlm"
-```
-
-**Usage**:
 ```bash
-# 1. Update base_dir in line 69
+# Edit paths
 nano baseline_vlm_training.py
+# Line 69: base_dir = "/your/path/to/project"
 
-# 2. Run training
+# Run training
 python baseline_vlm_training.py
 ```
 
-**Outputs**:
-```
-baseline_vlm/
-├── checkpoints/
-├── plots/
-│   ├── training_curves.png
-│   └── demographic_distribution.png
-└── results/
-    └── evaluation_metrics.json
-```
+**Outputs**: Model checkpoints, training curves, and demographic distribution plots in `baseline_vlm/`
 
----
+#### 3. BLIP Training on FairFace
 
-### 3. Standard BLIP Training on FairFace
+Standard BLIP fine-tuning with automatic dataset download:
 
-**File**: `train_blip.py`
-
-**Description**: Fine-tunes BLIP on FairFace with demographic-aware caption generation.
-
-**Key Features**:
-- Automatic FairFace download from Hugging Face
-- Caption generation using all 3 attributes (age, gender, race)
-- Training with demographic supervision
-
-**Configuration** (Lines 243-282):
-```python
-# Training hyperparameters
-BATCH_SIZE = 32  # FairFace images are small
-EPOCHS = 5
-LEARNING_RATE = 5e-5
-WARMUP_STEPS = 500
-MAX_GRAD_NORM = 1.0
-```
-
-**Usage**:
 ```bash
-# 1. Update FAIRFACE_BASE_DIR in lines 31 and 92
+# Edit paths
 nano train_blip.py
+# Line 31: FAIRFACE_BASE_DIR = "/your/path/to/fairface"
+# Line 92: FAIRFACE_BASE_DIR = "/your/path/to/fairface"
 
-# 2. Run training (automatically downloads FairFace)
+# Run training
 python train_blip.py
 ```
 
+**Special Features**:
+- Automatically downloads FairFace from Hugging Face
+- Generates demographic-aware captions using age, gender, and race attributes
+- Uses larger batch size (32) since FairFace images are smaller
 
-**Outputs**:
-```
-checkpoints/
-├── blip-finetuned-fairface/
-│   ├── config.json
-│   ├── pytorch_model.bin
-│   └── preprocessor_config.json
-└── training_history.json
-```
+**Outputs**: Fine-tuned model in `checkpoints/blip-finetuned-fairface/`
 
-**Caption Generation Strategy**:
-The script generates captions using all three FairFace attributes:
-```python
-# Example: "a photo of a young adult Asian woman"
-caption = f"a photo of a {age_desc} {race} {gender_noun}"
-```
+### Evaluation Workflows
 
-Age mapping:
-- 0-2: infant
-- 3-9: child
-- 10-19: teenager
-- 20-29: young adult
-- 30-39: adult
-- 40-49, 50-59: middle-aged adult
-- 60-69: senior
-- 70+: elderly person
+#### 1. Comprehensive VLM Evaluation
 
----
+Evaluate any VLM on trustworthiness metrics:
 
-## Evaluation Scripts
-
-### 1. Comprehensive VLM Evaluation
-
-**File**: `evaluate_vlm.py`
-
-**Description**: Evaluates pretrained VLMs on four trustworthiness dimensions.
-
-**Evaluation Metrics**:
-
-1. **Performance**:
-   - BLEU-1, BLEU-2, BLEU-3, BLEU-4
-   - ROUGE-L
-
-2. **Fairness**:
-   - Demographic Parity Difference (DPD)
-   - Equalized Odds Ratio (EOR)
-   - Bias Amplification Score (BAS)
-
-3. **Interpretability**:
-   - Attention faithfulness
-   - Gradient-based importance
-
-4. **Reliability**:
-   - Calibration error
-   - Out-of-distribution (OOD) confidence
-
-**Configuration** (Lines 43-49):
-```python
-COCO_BASE_DIR = "/your/path/to/coco2017"  # UPDATE THIS!
-OUTPUT_DIR = "vlm_trust_evaluation"
-BATCH_SIZE = 16
-MAX_SAMPLES = None  # Use full validation set
-NUM_VISUALIZATION_SAMPLES = 10
-```
-
-**Models Evaluated**:
-```python
-MODELS = {
-    "BLIP-Base": {
-        "model_class": BlipForConditionalGeneration,
-        "model_name": "Salesforce/blip-image-captioning-base",
-        "processor_class": BlipProcessor,
-        "size_m": 223,  # ~223M parameters
-    },
-}
-```
-
-**Usage**:
 ```bash
-# 1. Update COCO_BASE_DIR in line 44
+# Edit paths
 nano evaluate_vlm.py
+# Line 44: COCO_BASE_DIR = "/your/path/to/coco2017"
 
-# 2. Run evaluation
+# Run evaluation
 python evaluate_vlm.py
 ```
 
-**Outputs**:
-```
-vlm_trust_evaluation/
-├── results/
-│   ├── fairness_metrics.csv
-│   ├── performance_metrics.csv
-│   ├── interpretability_scores.csv
-│   └── reliability_metrics.csv
-├── plots/
-│   ├── bias_analysis.png
-│   ├── attention_maps.png
-│   └── calibration_curves.png
-└── evaluation_report.txt
-```
+**Metrics Computed**:
+- Performance: BLEU-1 to BLEU-4, ROUGE-L
+- Fairness: Demographic Parity Difference (DPD)
+- Interpretability: Attention entropy, concentration score
+- Reliability: Expected Calibration Error (ECE)
 
-**Key Fairness Metrics Explained**:
+**Outputs**: Results in `vlm_trust_evaluation/` with CSV files and visualizations
 
-- **DPD (Demographic Parity Difference)**: 
-  - Measures difference in positive outcome rates between groups
-  - Target: ≤ 0.08
-  - Formula: |P(Ŷ=1|G=male) - P(Ŷ=1|G=female)|
+#### 2. BLIP-Specific Evaluation
 
-- **EOR (Equalized Odds Ratio)**:
-  - Measures TPR ratio between groups
-  - Target: [0.9, 1.1]
-  - Formula: TPR(male) / TPR(female)
+Evaluate fine-tuned BLIP models:
 
-- **BAS (Bias Amplification Score)**:
-  - Compares model bias to dataset bias
-  - Target: |BAS| < 0.1
-  - Formula: (model_bias - dataset_bias) / dataset_bias
-
----
-
-### 2. BLIP Model Evaluation
-
-**File**: `evaluate_train_blip.py`
-
-**Description**: Evaluates fine-tuned BLIP models with fairness analysis.
-
-**Usage**:
 ```bash
 python evaluate_train_blip.py \
     --model_path checkpoints/blip-finetuned-fairface \
@@ -592,114 +383,49 @@ python evaluate_train_blip.py \
     --output_dir evaluation_results
 ```
 
-**Outputs**:
-- BLEU and ROUGE scores
-- Demographic-stratified performance
-- Bias amplification metrics
-- Confusion matrices
+#### 3. Causal Tracing Analysis
 
----
+Measure attention faithfulness via causal interventions:
 
-### 3. Causal Tracing
-
-**File**: `causal_tracing.py`
-
-**Description**: Implements causal tracing for interpretability analysis.
-
-**Key Features**:
-- Layer-wise importance analysis
-- Attention head attribution
-- Cross-modal influence tracking
-
-**Usage**:
 ```bash
 python causal_tracing.py \
     --model_path checkpoints/acmfo_coco_checkpoints/final_model \
-    --image_path sample_images/test_image.jpg
+    --image_path sample_images/test_image.jpg \
+    --output_dir causal_results
 ```
 
----
+**Analysis Process**:
+1. Generate baseline caption from clean image
+2. Corrupt all patches with Gaussian noise
+3. Restore each patch individually
+4. Measure probability change per token
+5. Compute Spearman correlation between attention weights and causal impact
 
-## Results and Analysis
+### Interactive Notebooks
 
-### Evaluation Results
+#### 1. Main Training Notebook
 
-The repository includes several pre-computed evaluation results:
-
-#### 1. Fairness Summary (`fairness_summary.txt`)
-```
-FAIRNESS EVALUATION SUMMARY
-======================================================================
-DPD: 0.0023 (target ≤ 0.08): PASS
-EOR: inf (target [0.9, 1.1]): FAIL
-BAS: 1.0000 (target |BAS| < 0.1): FAIL
-BLEU-4: 0.0351
-ROUGE-L: 0.2321
+```bash
+jupyter notebook vlm_train-2.ipynb
 ```
 
-**Interpretation**:
-- DPD passes (0.0023 << 0.08): Good demographic parity
-- EOR fails (inf): Need more samples with true positives
-- BAS fails (1.0): Significant bias amplification
-- Performance: BLEU-4=0.0351, ROUGE-L=0.2321
+End-to-end pipeline for ACMFO training with interactive monitoring
 
-#### 2. Complete Evaluation Results
+#### 2. Baseline Experiments
 
-Available in CSV format:
-- `fairness_evaluation_results.csv` - Per-group fairness metrics
-- `final_evaluation_results.csv` - Aggregated results
-- `complete_evaluation_results.csv` - Detailed per-sample results
-- `blip_coco_results.csv` - BLIP performance on COCO
-- `blip_coco_multi_reference_scores.csv` - Multi-reference BLEU
-
-#### 3. Bias Analysis
-
-**COCO Bias Analysis** (`coco_bias_report.json`):
-```json
-{
-  "gender_distribution": {
-    "male": 0.45,
-    "female": 0.35,
-    "unknown": 0.20
-  },
-  "activity_bias": {
-    "male": ["sports", "working", "playing"],
-    "female": ["cooking", "caring", "shopping"]
-  },
-  "object_association": {
-    "male": ["car", "computer", "bike"],
-    "female": ["kitchen", "children", "flowers"]
-  }
-}
+```bash
+jupyter notebook baseline_vlm_training.ipynb
 ```
 
-### Visualization Gallery
+Baseline VLM training on FairFace/CelebA-HQ with fairness analysis
 
-The repository includes numerous pre-generated plots:
+#### 3. COCO Bias Analysis
 
-1. **Fairness Plots**:
-   - `fairness_evaluation_plots.png` - Multi-metric fairness dashboard
-   - `gender_distribution.png` - Gender distribution in dataset
-   - `people_distribution.png` - Number of people per image
+```bash
+jupyter notebook coco_bias_analysis-3.ipynb
+```
 
-2. **Bias Analysis**:
-   - `activity_gender_bias.png` / `activity_gender_bias_corrected.png`
-   - `object_gender_bias.png` / `object_gender_bias_corrected.png`
-   - `word_gender_bias_corrected.png`
-
-3. **Dataset Analysis**:
-   - `flickr30k_gender_distribution.png`
-   - `flickr30k_activity_bias.png`
-   - `flickr30k_context_bias.png`
-   - `flickr30k_caption_quality.png`
-
-4. **COCO Analysis**:
-   - `coco_comprehensive_bias_analysis.png` - Complete bias analysis
-   - `coco_comprehensive_bias_analysis.pdf` - High-res PDF version
-
-5. **Model Outputs**:
-   - `sample_images_captions.png` - Generated caption examples
-   - `caption_length_distribution.png` - Caption length statistics
+Comprehensive dataset bias analysis with statistical visualizations
 
 ---
 
@@ -740,18 +466,22 @@ mkdir -p datasets/{coco2017,fairface,celeba}
 nano download_coco.sh  # Update BASE_DIR
 chmod +x download_coco.sh
 ./download_coco.sh
+# Expected time: 30-60 minutes
+# Expected size: ~20GB
 
 # 3. FairFace will be downloaded automatically by train_blip.py
 # Or manually:
 nano download_fairface.sh  # Update BASE_DIR
 chmod +x download_fairface.sh
 ./download_fairface.sh
-
+# Expected time: 20-40 minutes
+# Expected size: ~5.5GB
 
 # 4. CelebA (optional)
 nano download_celeba.sh  # Update BASE_DIR
 chmod +x download_celeba.sh
 ./download_celeba.sh
+# Expected time: 15-30 minutes
 ```
 
 #### Phase 3: Update All Paths
@@ -789,18 +519,18 @@ chmod +x update_paths.sh
 ./update_paths.sh
 ```
 
-#### Phase 4: Training 
+#### Phase 4: Training
 
 **Option A: Full Training Pipeline**
 
 ```bash
-# 1. Train BLIP on FairFace
+# 1. Train BLIP on FairFace 
 python train_blip.py
 
-# 2. Train ACMFO on COCO 
+# 2. Train ACMFO on COCO
 python acmfo_training.py
 
-# 3. Train baseline VLM 
+# 3. Train baseline VLM
 python baseline_vlm_training.py
 ```
 
@@ -820,7 +550,7 @@ val_dataset = val_dataset[:200]
 
 Then run:
 ```bash
-python acmfo_training.py  
+python acmfo_training.py  # 
 ```
 
 #### Phase 5: Evaluation 
@@ -872,14 +602,203 @@ After full reproduction, you should obtain:
 
 ---
 
-# Update packages
-pip install --upgrade transformers datasets torch
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. CUDA Out of Memory
+
+**Error**: `RuntimeError: CUDA out of memory`
+
+**Solutions**:
+```python
+# Reduce batch size
+BATCH_SIZE = 4  # Instead of 8 or 16
+
+# Enable gradient checkpointing
+model.gradient_checkpointing_enable()
+
+# Use mixed precision training
+from torch.cuda.amp import autocast, GradScaler
+scaler = GradScaler()
+```
+
+#### 2. Dataset Download Failures
+
+**Error**: `403 Forbidden` or `Connection timeout`
+
+**Solutions**:
+```bash
+# For COCO - use mirror
+wget http://images.cocodataset.org/zips/train2017.zip
+# If fails, try: https://pjreddie.com/projects/coco-mirror/
+
+# For FairFace - use HuggingFace (automatic in train_blip.py)
+# For Google Drive (CelebA) - use gdown:
+pip install gdown
+gdown --id FILE_ID -O output.zip
+```
+
+#### 3. NLTK Data Missing
+
+**Error**: `LookupError: Resource punkt not found`
+
+**Solution**:
+```python
+import nltk
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+```
+
+#### 4. Path Not Found Errors
+
+**Error**: `FileNotFoundError: [Errno 2] No such file or directory`
+
+**Solution**:
+```bash
+# Check all paths are updated
+grep -r "nfs/roberts" *.py  # Should show your updated paths
+
+# Verify dataset structure
+ls -R datasets/coco2017
+ls -R datasets/fairface
+
+# Fix permissions
+chmod -R 755 datasets/
+```
+
+#### 5. CLIP Model Loading Issues
+
+**Error**: `AttributeError: 'NoneType' object has no attribute 'to'`
+
+**Solution**:
+```python
+# In evaluate_vlm.py, ensure CLIP loads successfully
+try:
+    self.clip_model = CLIPModel.from_pretrained(
+        "openai/clip-vit-base-patch32",
+        use_safetensors=True
+    ).to(device)
+    print("✓ CLIP loaded successfully")
+except Exception as e:
+    print(f"✗ CLIP loading failed: {e}")
+    self.clip_model = None  # Graceful degradation
+```
+
+#### 6. Slow Training
+
+**Issue**: Training is very slow
+
+**Solutions**:
+```python
+# 1. Enable DataLoader workers
+train_loader = DataLoader(
+    dataset, 
+    batch_size=BATCH_SIZE,
+    num_workers=4,  # Use multiple processes
+    pin_memory=True  # Faster GPU transfer
+)
+
+# 2. Use smaller subset for testing
+TRAIN_SAMPLES = 1000  # Test with 1k samples first
+
+# 3. Enable mixed precision
+from torch.cuda.amp import autocast
+with autocast():
+    outputs = model(...)
+```
+
+#### 7. Evaluation Metrics = 0
+
+**Issue**: BLEU/ROUGE scores are 0 or very low
+
+**Possible Causes**:
+1. Model not trained enough
+2. Caption tokenization mismatch
+3. Empty predictions
+
+**Debug**:
+```python
+# Check predictions
+print("Generated:", generated_caption)
+print("Reference:", reference_caption)
+
+# Check tokenization
+tokens = processor.tokenizer.tokenize(caption)
+print("Tokens:", tokens)
 ```
 
 ---
 
-## License
+### Performance Optimization Tips
 
-This project is released under the MIT License. See `LICENSE` file for details.
+1. **GPU Utilization**:
+```python
+# Monitor GPU usage
+watch -n 1 nvidia-smi
+
+# Maximize batch size without OOM
+# Use gradient accumulation if needed
+GRADIENT_ACCUMULATION_STEPS = 4
+```
+
+2. **Data Loading**:
+```python
+# Prefetch to GPU
+for batch in prefetch_to_device(dataloader, device):
+    ...
+
+# Cache preprocessed data
+cache_dir = "preprocessed_cache"
+os.makedirs(cache_dir, exist_ok=True)
+```
+
+3. **Training Speed**:
+```python
+# Compile model (PyTorch 2.0+)
+model = torch.compile(model)
+
+# Use flash attention (if available)
+model.config.use_flash_attention = True
+```
 
 ---
+
+## Citation
+
+If you use this code or methodology, please cite:
+
+```bibtex
+@misc{vlm_fairness_2024,
+  title={Fairness-Aware Cross-Modal Interpretability for Vision-Language Models},
+  author={Your Name},
+  year={2024},
+  publisher={GitHub},
+  url={https://github.com/yourusername/vlm-fairness}
+}
+```
+
+
+## Support and Issues
+
+For questions or issues:
+
+1. Check this README thoroughly
+2. Review error messages in console
+3. Verify all paths are correctly updated
+4. Check GPU memory with `nvidia-smi`
+5. Ensure all datasets are downloaded correctly
+6. Try with reduced sample sizes first
+
+Common quick fixes:
+```bash
+# Reset everything
+rm -rf checkpoints/ outputs/
+python train_blip.py  # Start fresh
+
+# Check versions
+pip list | grep -E "torch|transformers|datasets"
+
+# Update packages
+pip install --upgrade transformers datasets torch
+```
